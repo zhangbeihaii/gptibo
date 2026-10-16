@@ -2,6 +2,7 @@
 """Initialize independent local development secrets without overwriting files."""
 import os
 import secrets
+import base64
 from pathlib import Path
 
 root = Path(__file__).resolve().parents[1] / '.secrets'
@@ -14,4 +15,14 @@ for name in ('owner-password', 'app-password', 'auth-secret'):
         continue
     with os.fdopen(fd, 'w') as output:
         output.write(secrets.token_hex(32))
+    print(f'{name}: created (value hidden)')
+
+for name in ('voucher-encryption-key', 'voucher-fingerprint-key'):
+    try:
+        fd = os.open(root / name, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    except FileExistsError:
+        print(f'{name}: already exists, unchanged')
+        continue
+    with os.fdopen(fd, 'w') as output:
+        output.write(base64.b64encode(secrets.token_bytes(32)).decode('ascii'))
     print(f'{name}: created (value hidden)')

@@ -32,6 +32,7 @@ type Plan struct {
 	HasCoupons           bool   `json:"has_coupons"`
 	SupportsWarranty     bool   `json:"supports_warranty"`
 	Cost                 *int64 `json:"-"`
+	CatalogEnabled       bool   `json:"-"`
 	ID                   string `json:"id"`
 	ProductID            string `json:"product_id"`
 	Name                 string `json:"name"`
@@ -176,6 +177,7 @@ func (s Service) Read(ctx context.Context, slug string) (Response, error) {
 			rows.Close()
 			return out, err
 		}
+		p.CatalogEnabled = enabled
 		p.HasCoupons = p.HasCoupons && enabled
 		if hidden[p.ProductID] {
 			continue

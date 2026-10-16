@@ -51,7 +51,8 @@ func (s Service) renderView(o Order, admin bool, related viewRelations) (map[str
 	contacts := related.contacts
 	out["supportContacts"] = contacts
 	supplier := related.supplier
-	out["manualFulfillment"] = (o.Mode == "live" && o.Test == 0 && o.Plan == "pro-25x" && len(supplier) == 0) || EmailKind(o.Plan) != ""
+	out["manualFulfillment"] = (o.Mode == "live" && o.Test == 0 && o.Plan == "pro-25x" && len(supplier) == 0) || EmailKind(o.Plan) != "" || (o.Mode == "live" && o.Test == 0 && related.voucherManaged)
+	out["voucherManaged"] = o.Mode == "live" && o.Test == 0 && related.voucherManaged
 	if len(supplier) > 0 && o.Mode == "live" && o.Test == 0 {
 		t := supplier[0]
 		attempts := related.attempts
@@ -259,7 +260,19 @@ func (s Service) Detail(ctx context.Context, id string, access *Access) (map[str
 			}
 		}
 	}
-	return out, tx.Commit(ctx)
+	if e = tx.Commit(ctx); e != nil {
+		return nil, e
+	}
+	if access != nil && s.VoucherDelivery != nil {
+		voucher, err := s.VoucherDelivery(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		if voucher != nil {
+			v["voucherDelivery"] = voucher
+		}
+	}
+	return out, nil
 }
 func validStatus(status string) bool {
 	return status == "" || status == "pending" || status == "session" || status == "processing" || status == "success" || status == "failed" || status == "cancelled"

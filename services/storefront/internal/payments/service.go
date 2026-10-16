@@ -16,11 +16,13 @@ import (
 )
 
 type Service struct {
-	Store        *store.Store
-	Provider     Provider
-	Providers    map[string]Provider
-	NotifyOrigin string
-	Checkout     bool
+	Store          *store.Store
+	Provider       Provider
+	Providers      map[string]Provider
+	NotifyOrigin   string
+	Checkout       bool
+	IssueVoucher   func(context.Context, pgx.Tx, string) error
+	ReleaseVoucher func(context.Context, pgx.Tx, string) error
 }
 type Payment struct {
 	Fee        int64   `json:"fee_cents"`
@@ -128,6 +130,16 @@ func (s Service) Apply(ctx context.Context, expected Payment, r Result) error {
 			next.Status = "cancelled"
 		}
 		if _, e = orders.Change(ctx, tx, o, next, "payment", action, note); e != nil {
+			return e
+		}
+	}
+	if r.Status == "paid" && s.IssueVoucher != nil {
+		if e = s.IssueVoucher(ctx, tx, o.ID); e != nil {
+			return e
+		}
+	}
+	if r.Status == "closed" && s.ReleaseVoucher != nil {
+		if e = s.ReleaseVoucher(ctx, tx, o.ID); e != nil {
 			return e
 		}
 	}

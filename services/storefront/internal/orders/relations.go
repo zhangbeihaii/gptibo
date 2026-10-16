@@ -7,6 +7,7 @@ import (
 
 type viewRelations struct {
 	supportsWarranty                             bool
+	voucherManaged                               bool
 	contacts                                     catalog.Contacts
 	supplier, attempts, gift, delivery, purchase []map[string]any
 	settlement                                   any
@@ -45,6 +46,7 @@ func (s Service) Views(ctx context.Context, q Query, list []Order, admin bool) (
 		assign func(*viewRelations, map[string]any)
 	}{
 		{`SELECT o.id order_id,COALESCE(c.supports_warranty,true) supported FROM orders o LEFT JOIN catalog_plans c ON c.id=o.plan WHERE o.id=ANY($1::text[])`, func(v *viewRelations, r map[string]any) { v.supportsWarranty = r["supported"].(bool) }},
+		{`SELECT o.id order_id,EXISTS(SELECT 1 FROM voucher_inventory v WHERE v.plan_id=o.plan) managed FROM orders o WHERE o.id=ANY($1::text[])`, func(v *viewRelations, r map[string]any) { v.voucherManaged = r["managed"].(bool) }},
 		{`SELECT order_id,amount_cents "amountCents",fee_cents "feeCents",fee_bps "feeBps",COALESCE((SELECT sum(r.fee_cents) FROM payment_refund_attempts r WHERE r.order_id=p.order_id AND r.state='confirmed'),0)::bigint "refundedFeeCents" FROM payments p WHERE order_id=ANY($1::text[])`, func(v *viewRelations, r map[string]any) { v.payment = r }},
 		{`SELECT order_id,remote_id,payment_status,refunded_cents,financial_hold,verified_at,payment_qr,expires_at FROM recharge_orders WHERE order_id=ANY($1::text[])`, func(v *viewRelations, r map[string]any) { v.supplier = append(v.supplier, r) }},
 		{`SELECT DISTINCT ON(order_id) order_id,id,EXISTS(SELECT 1 FROM recharge_credentials c WHERE c.attempt_id=recharge_redemptions.id) credential_saved,status,fallback,public_message,recovery_action,failure_code,error_category,result_code,progress_stage,progress_version,progress_updated_at,attempt_no,credential_mode,account_email_masked,finished_at,created_at FROM recharge_redemptions WHERE order_id=ANY($1::text[]) ORDER BY order_id,attempt_no DESC`, func(v *viewRelations, r map[string]any) { v.attempts = append(v.attempts, r) }},

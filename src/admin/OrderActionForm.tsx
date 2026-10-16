@@ -30,7 +30,7 @@ export function OrderActionForm({ order, loading, onSaved, onRefresh }: { order:
     <select aria-label="处理方式" value={action} onChange={e => setAction(e.target.value)} disabled={busy || loading || changed}>
       <option value="note">仅添加内部备注</option>
       {canRecoverXGift(order) && <option value="xgift-recovery">补发 X 赠送</option>}
-      {order.manualFulfillment && !emailProduct(order.plan) && order.mode === 'live' && !order.isTest && order.paymentStatus === 'paid' && !order.redemptionBlocked && !order.refundHold && (order.refundedCents ?? 0) < Math.round(order.price * 100) && <>
+      {order.manualFulfillment && !order.voucherManaged && !emailProduct(order.plan) && order.mode === 'live' && !order.isTest && order.paymentStatus === 'paid' && !order.redemptionBlocked && !order.refundHold && (order.refundedCents ?? 0) < Math.round(order.price * 100) && <>
         {order.status === 'session' && <option value="manual-start">开始人工开通</option>}
         {['session', 'processing'].includes(order.status) && <option value="manual-complete">确认人工开通完成</option>}
       </>}

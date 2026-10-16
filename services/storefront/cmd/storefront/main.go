@@ -26,6 +26,7 @@ import (
 	"gptibo/storefront/internal/securityaudit"
 	"gptibo/storefront/internal/store"
 	"gptibo/storefront/internal/telegram"
+	"gptibo/storefront/internal/vouchers"
 	"gptibo/storefront/internal/worker"
 )
 
@@ -131,11 +132,25 @@ func run(logger *slog.Logger) error {
 		}
 		return nil
 	}
+	voucherKeys, err := config.LoadVoucherKeys()
+	if err != nil {
+		return err
+	}
+	var encryptionKey, fingerprintKey []byte
+	if voucherKeys != nil {
+		encryptionKey, fingerprintKey = voucherKeys.Encryption, voucherKeys.Fingerprint
+	}
+	voucherService, err := vouchers.New(s, encryptionKey, fingerprintKey)
+	if err != nil {
+		return err
+	}
 	paymentService, err := config.LoadPayments()
 	if err != nil {
 		return err
 	}
 	paymentService.Store = s
+	paymentService.IssueVoucher = voucherService.IssuePaid
+	paymentService.ReleaseVoucher = voucherService.ReleaseClosed
 	httpConfig, err := config.LoadHTTP()
 	if err != nil {
 		return err
@@ -263,7 +278,7 @@ func run(logger *slog.Logger) error {
 		return worker.Run(ctx, s, cfg.WorkerID, logger, jobs...)
 	}
 	gin.SetMode(gin.ReleaseMode)
-	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.Router(s, cfg.WorkerID, logger, httpapi.Options{AdminAccess: httpConfig.AdminAccess, SecurityAudit: auditService, Turnstile: httpConfig.Turnstile, AuthTurnstile: httpConfig.AuthTurnstile, OrderProtection: true, TrafficProtection: httpConfig.TrafficProtection, Domains: domainService, Rehearsal: httpConfig.Rehearsal, Origin: httpConfig.Origin, Auth: identity, TrustedProxies: httpConfig.TrustedProxies, OrderTesting: httpConfig.OrderTesting, Payments: &paymentService, PaymentTesting: httpConfig.PaymentTesting, MailSender: mailSender, AdminEmail: httpConfig.Auth.AdminEmail, Recharge: rechargeService, Procurement: procurementService, XGift: xgiftService, Telegram: telegramClient, LegacyBuyer: httpConfig.LegacyBuyer}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
+	server := &http.Server{Addr: cfg.ListenAddr, Handler: httpapi.Router(s, cfg.WorkerID, logger, httpapi.Options{AdminAccess: httpConfig.AdminAccess, SecurityAudit: auditService, Turnstile: httpConfig.Turnstile, AuthTurnstile: httpConfig.AuthTurnstile, OrderProtection: true, TrafficProtection: httpConfig.TrafficProtection, Domains: domainService, Rehearsal: httpConfig.Rehearsal, Origin: httpConfig.Origin, Auth: identity, TrustedProxies: httpConfig.TrustedProxies, OrderTesting: httpConfig.OrderTesting, Payments: &paymentService, PaymentTesting: httpConfig.PaymentTesting, MailSender: mailSender, AdminEmail: httpConfig.Auth.AdminEmail, Recharge: rechargeService, Procurement: procurementService, XGift: xgiftService, Vouchers: voucherService, Telegram: telegramClient, LegacyBuyer: httpConfig.LegacyBuyer}), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 15 * time.Second, WriteTimeout: 60 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 32 << 10}
 	done := make(chan error, 1)
 	go func() {
 		logger.Info("storefront API started", "address", cfg.ListenAddr)

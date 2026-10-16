@@ -7,7 +7,7 @@ x-runtime: &runtime
   cap_drop: [ALL]
   security_opt: [no-new-privileges:true]
   stop_grace_period: 20s
-  secrets: [app_password]
+  secrets: [app_password, voucher_encryption_key, voucher_fingerprint_key]
   networks: [database, default]
   environment: &app-environment
     DB_HOST: postgres
@@ -16,6 +16,8 @@ x-runtime: &runtime
     DB_PASSWORD_FILE: /run/secrets/app_password
     DB_SSLMODE: disable
     WORKER_ID: storefront-worker
+    VOUCHER_ENCRYPTION_KEY_FILE: /run/secrets/voucher_encryption_key
+    VOUCHER_FINGERPRINT_KEY_FILE: /run/secrets/voucher_fingerprint_key
   depends_on:
     postgres:
       condition: service_healthy
@@ -53,7 +55,7 @@ services:
       context: .
       dockerfile: deploy/Dockerfile
     command: [api]
-    secrets: [app_password, auth_secret]
+    secrets: [app_password, auth_secret, voucher_encryption_key, voucher_fingerprint_key]
     environment:
       <<: *app-environment
       LISTEN_ADDR: 0.0.0.0:8093
@@ -72,7 +74,7 @@ services:
   worker:
     <<: *runtime
     command: [worker]
-    secrets: [app_password, auth_secret]
+    secrets: [app_password, auth_secret, voucher_encryption_key, voucher_fingerprint_key]
     environment:
       <<: *app-environment
       PUBLIC_ORIGIN: ${PUBLIC_ORIGIN:-http://127.0.0.1:8093}
@@ -119,3 +121,7 @@ secrets:
     file: ./.secrets/owner-password
   app_password:
     file: ./.secrets/app-password
+  voucher_encryption_key:
+    file: ./.secrets/voucher-encryption-key
+  voucher_fingerprint_key:
+    file: ./.secrets/voucher-fingerprint-key

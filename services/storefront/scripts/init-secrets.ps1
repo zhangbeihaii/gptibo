@@ -18,3 +18,20 @@ foreach ($secretName in @('owner-password', 'app-password', 'auth-secret')) {
     } finally { $secretStream.Dispose() }
     Write-Host "$secretName created (value not printed)."
 }
+foreach ($secretName in @('voucher-encryption-key', 'voucher-fingerprint-key')) {
+    $secretPath = Join-Path $secretDirectory $secretName
+    if (Test-Path -LiteralPath $secretPath) {
+        Write-Host "$secretName already exists; kept unchanged."
+        continue
+    }
+    $secretBytes = [byte[]]::new(32)
+    [Security.Cryptography.RandomNumberGenerator]::Fill($secretBytes)
+    $secretText = [Convert]::ToBase64String($secretBytes)
+    # CreateNew prevents overwriting a concurrently created secret.
+    $secretStream = [IO.File]::Open($secretPath, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write)
+    try {
+        $encodedSecret = [Text.Encoding]::UTF8.GetBytes($secretText)
+        $secretStream.Write($encodedSecret, 0, $encodedSecret.Length)
+    } finally { $secretStream.Dispose() }
+    Write-Host "$secretName created (value not printed)."
+}

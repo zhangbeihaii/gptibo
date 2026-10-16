@@ -21,10 +21,11 @@ import (
 	"gptibo/storefront/internal/mailer"
 	"gptibo/storefront/internal/payments"
 	"gptibo/storefront/internal/procurement"
+	"gptibo/storefront/internal/recharge"
 	"gptibo/storefront/internal/securityaudit"
 	"gptibo/storefront/internal/store"
 	"gptibo/storefront/internal/telegram"
-	"gptibo/storefront/internal/recharge"
+	"gptibo/storefront/internal/vouchers"
 	"gptibo/storefront/internal/xgift"
 )
 
@@ -40,8 +41,9 @@ type Options struct {
 	LegacyBuyer       bool
 	Telegram          *telegram.Client
 	XGift             *xgift.Service
+	Vouchers          *vouchers.Service
 	Procurement       *procurement.Service
-	Recharge              *recharge.Service
+	Recharge          *recharge.Service
 	MailSender        mailer.Sender
 	AdminEmail        string
 	PaymentTesting    bool
@@ -207,6 +209,15 @@ func Router(s *store.Store, workerID string, logger *slog.Logger, options ...Opt
 				}
 			}
 			return plans
+		}
+		if opts.Vouchers != nil {
+			previous := cs.Availability
+			cs.Availability = func(ctx context.Context, plans []catalog.Plan) []catalog.Plan {
+				if previous != nil {
+					plans = previous(ctx, plans)
+				}
+				return opts.Vouchers.Availability(ctx, plans)
+			}
 		}
 		out, err := cs.Read(ctx, storePartner(c, c.Query("partner")))
 		if errors.Is(err, catalog.ErrShopUnavailable) {

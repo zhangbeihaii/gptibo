@@ -33,6 +33,9 @@ type Service struct {
 	SupplierCheckout        bool
 	Replay                  func(context.Context, Query, Order, CreateInput) error
 	RecoverGift             func(context.Context, string, string, string, int64) error
+	StockPlan               func(context.Context, Query, string) (bool, error)
+	ReserveVoucher          func(context.Context, pgx.Tx, string, string) error
+	VoucherDelivery         func(context.Context, string) (any, error)
 }
 type Access struct{ OwnerHash, Email, ClientIP string }
 type Order struct {
@@ -272,8 +275,15 @@ func (s Service) Create(ctx context.Context, access Access, in CreateInput) (Ord
 			return out, false, fault.New(409, "上级代理已停用，商店暂不接单。")
 		}
 	}
+	stockManaged := false
+	if !s.Testing && s.StockPlan != nil {
+		stockManaged, e = s.StockPlan(ctx, tx, in.Plan)
+		if e != nil {
+			return out, false, e
+		}
+	}
 	// The demo executor is deliberately limited to the legacy internal test products.
-	if (s.Testing && !DemoPlan(in.Plan)) || (!s.Testing && (s.LiveSnapshot == nil || s.LivePlan == nil || !s.LivePlan(in.Plan))) {
+	if (s.Testing && !DemoPlan(in.Plan)) || (!s.Testing && !stockManaged && (s.LiveSnapshot == nil || s.LivePlan == nil || !s.LivePlan(in.Plan))) {
 		return out, false, fault.New(409, "该服务暂未开放购买，请稍后再来。")
 	}
 	var name, note, productID string
@@ -380,8 +390,17 @@ func (s Service) Create(ctx context.Context, access Access, in CreateInput) (Ord
 		return out, false, e
 	}
 	if !s.Testing {
-		if e = s.LiveSnapshot(ctx, tx, out, in); e != nil {
-			return out, false, e
+		if stockManaged {
+			if s.ReserveVoucher == nil {
+				return out, false, fault.New(503, "卡密库存服务暂不可用。")
+			}
+			if e = s.ReserveVoucher(ctx, tx, id, in.Plan); e != nil {
+				return out, false, e
+			}
+		} else {
+			if e = s.LiveSnapshot(ctx, tx, out, in); e != nil {
+				return out, false, e
+			}
 		}
 		if s.PaymentSnapshot != nil {
 			if e = s.PaymentSnapshot(ctx, tx, out, in); e != nil {

@@ -474,11 +474,18 @@ func register(r *gin.Engine, s *store.Store, opts Options) {
 	registerPayouts(admin, partner, m, token)
 	registerAccounting(admin, m, token)
 	registerDelivery(admin, delivery.Service{Store: s, Auth: a, Sender: opts.MailSender, Origin: opts.Origin, AdminEmail: opts.AdminEmail, DomainsEnabled: func() bool { return opts.Domains != nil && opts.Domains.Enabled() }}, token)
+	if opts.Vouchers != nil {
+		registerVouchers(admin, opts.Vouchers)
+	}
 	registerCustomers(admin, partner, m, token)
 	paymentService := payments.Service{Store: s}
 	if opts.Payments != nil {
 		paymentService = *opts.Payments
 		paymentService.Store = s
+	}
+	if opts.Vouchers != nil {
+		paymentService.IssueVoucher = opts.Vouchers.IssuePaid
+		paymentService.ReleaseVoucher = opts.Vouchers.ReleaseClosed
 	}
 	registerPayments(r, group, admin, paymentService, a, token)
 	var domainFee int64
@@ -495,6 +502,15 @@ func register(r *gin.Engine, s *store.Store, opts Options) {
 	registerPaymentTests(admin, paymentService, a, refundService, opts.PaymentTesting, token)
 	registerAnalytics(group, admin, partner, m, a)
 	orderService := orders.Service{Store: s, Auth: a, ProtectCreation: opts.OrderProtection, Testing: opts.OrderTesting, ReadOnly: opts.Rehearsal, PaymentReady: paymentService.Provider != nil}
+	if opts.Vouchers != nil {
+		orderService.StockPlan = func(ctx context.Context, q orders.Query, plan string) (bool, error) {
+			return opts.Vouchers.Managed(ctx, q, plan)
+		}
+		orderService.ReserveVoucher = opts.Vouchers.Reserve
+		orderService.VoucherDelivery = func(ctx context.Context, id string) (any, error) {
+			return opts.Vouchers.CustomerDelivery(ctx, id)
+		}
+	}
 	group.GET("/orders/verification", func(c *gin.Context) {
 		if opts.Turnstile == nil || (c.Query("purpose") == "auth" && !opts.AuthTurnstile) {
 			c.JSON(200, gin.H{"enabled": false})
