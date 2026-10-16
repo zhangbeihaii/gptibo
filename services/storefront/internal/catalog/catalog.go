@@ -286,6 +286,11 @@ func (s Service) Read(ctx context.Context, slug string) (Response, error) {
 	}
 	if !s.Testing && s.Availability != nil {
 		out.Plans = s.Availability(ctx, out.Plans)
+		// Availability providers may return nil for an empty catalog. Keep the
+		// public response shape stable so clients always receive an array.
+		if out.Plans == nil {
+			out.Plans = []Plan{}
+		}
 		for _, p := range out.Plans {
 			out.CheckoutEnabled = out.CheckoutEnabled || p.Enabled == 1
 		}
