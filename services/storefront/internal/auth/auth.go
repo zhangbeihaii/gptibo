@@ -49,13 +49,14 @@ func (a *Service) Invite(ctx context.Context, id, origin string) error {
 }
 
 type Config struct {
-	Secret, AdminUsername, AdminEmail, AdminTOTP string
-	Sender                                       Sender
+	Secret, AdminUsername, AdminEmail, AdminTOTP, AdminPasswordHash string
+	Sender                                                          Sender
 }
 type Service struct {
-	Store *store.Store
-	cfg   Config
-	key   []byte
+	Store             *store.Store
+	cfg               Config
+	key               []byte
+	adminPasswordGate chan struct{}
 }
 type Principal struct{ Role, Subject, Version string }
 type SendInput struct {
@@ -70,6 +71,7 @@ type VerifyInput struct {
 	Email          string `json:"email"`
 	Challenge      string `json:"challenge"`
 	EmailCode      string `json:"emailCode"`
+	Password       string `json:"password"`
 	Code           string `json:"code"`
 }
 
@@ -82,12 +84,23 @@ func New(s *store.Store, cfg Config) (*Service, error) {
 		}
 		a.key = key
 	}
-	if cfg.AdminUsername != "" || cfg.AdminEmail != "" || cfg.AdminTOTP != "" {
-		email, e := Email(cfg.AdminEmail)
-		if len(cfg.AdminUsername) == 0 || len(cfg.AdminUsername) > 80 || !security.ValidTOTP(cfg.AdminTOTP) || e != nil {
-			return nil, errors.New("complete administrator username, email and TOTP configuration required")
+	if cfg.AdminUsername != "" || cfg.AdminEmail != "" || cfg.AdminTOTP != "" || cfg.AdminPasswordHash != "" {
+		if len(cfg.AdminUsername) == 0 || len(cfg.AdminUsername) > 80 || strings.TrimSpace(cfg.AdminUsername) != cfg.AdminUsername || !security.ValidTOTP(cfg.AdminTOTP) {
+			return nil, errors.New("complete administrator username and TOTP configuration required")
 		}
-		a.cfg.AdminEmail = email
+		if cfg.AdminPasswordHash != "" && !validAdminPasswordHash(cfg.AdminPasswordHash) {
+			return nil, errors.New("invalid administrator password hash configuration")
+		}
+		if cfg.AdminPasswordHash != "" {
+			a.adminPasswordGate = make(chan struct{}, 2)
+		}
+		if cfg.AdminEmail != "" || cfg.AdminPasswordHash == "" {
+			email, e := Email(cfg.AdminEmail)
+			if e != nil {
+				return nil, errors.New("valid administrator email required for email login")
+			}
+			a.cfg.AdminEmail = email
+		}
 	}
 	return a, nil
 }
@@ -109,6 +122,9 @@ func (a *Service) version(role, subject string, version int64) string {
 	value := fmt.Sprintf("%s:%s:%d", role, subject, version)
 	if role == "admin" {
 		value += ":" + a.cfg.AdminEmail + ":" + a.cfg.AdminTOTP
+		if a.AdminPasswordLogin() {
+			value += ":password:" + a.cfg.AdminPasswordHash
+		}
 	}
 	return security.MAC(a.key, "credential:"+value)
 }
@@ -138,6 +154,9 @@ func (a *Service) LimitIn(ctx context.Context, q interface {
 func invalid() error { return fault.New(401, "登录信息无效、验证码已使用或已过期。") }
 
 func (a *Service) Send(ctx context.Context, role string, in SendInput, ip string) (string, error) {
+	if role == "admin" && a.AdminPasswordLogin() {
+		return "", fault.New(409, "后台使用密码和验证器登录。")
+	}
 	if !a.Ready() || (role == "admin" && !a.AdminConfigured()) {
 		return "", fault.New(503, "邮箱验证尚未配置。")
 	}
@@ -220,6 +239,9 @@ func (a *Service) Send(ctx context.Context, role string, in SendInput, ip string
 }
 
 func (a *Service) Verify(ctx context.Context, role string, in VerifyInput, ip string) (string, error) {
+	if role == "admin" && a.AdminPasswordLogin() {
+		return a.verifyPasswordAdmin(ctx, in, ip)
+	}
 	if !a.Ready() || (role == "admin" && !a.AdminConfigured()) {
 		return "", fault.New(503, "邮箱验证尚未配置。")
 	}

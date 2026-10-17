@@ -21,6 +21,16 @@ docker compose up -d --wait api worker
 
 `compose.auth.yaml` 可选启用管理员/邮件：配置 `ADMIN_USERNAME`、`ADMIN_EMAIL`、`MAIL_FROM`，自行生成 `.secrets/admin-totp` 并保存 `.secrets/resend-key`，再叠加该 Compose 文件。不要使用测试中的固定认证向量。
 
+管理员也可使用独立的“用户名 + 密码 + 验证器动态码”模式，不依赖邮件服务。在本机通过隐藏输入把密码传给初始化工具（至少 12 字节），例如在本目录执行：
+
+```sh
+python -c "import getpass,subprocess; subprocess.run(['go','run','./cmd/admin-setup','--username','your-admin','--output','.admin-auth'],input=getpass.getpass('Admin password: ').encode(),check=True)"
+```
+
+工具拒绝覆盖已有目录，将 Argon2id 密码哈希、随机 TOTP 密钥和绑定 URI 写入 `.admin-auth/`，不会打印秘密。将 `password-hash`、`totp` 分别安全安装到 `.secrets/admin-password-hash` 和 `.secrets/admin-totp`，叠加 `compose.admin-password.yaml`，设置 `ADMIN_USERNAME`。原生部署可设置 `ADMIN_PASSWORD_HASH_FILE`、`ADMIN_TOTP_SECRET_FILE` 指向相应的受限文件。`ADMIN_EMAIL` 在密码模式下仅用于可选联系或告警。
+
+验证器使用 SHA-1、6 位数字、30 秒周期；用本地二维码工具展示 `authenticator-uri.txt` 供手机绑定。密码及 TOTP 秘钥改变后旧管理员会话失效。启用密码模式后，邮件验证码入口不能作为替代登录途径；登录继续执行来源检查、可选 Turnstile、跨 IP 的账号限速及动态码防重放。密钥文件、绑定 URI 和二维码应保存在受限目录，不得提交或放入公共静态站点。
+
 其他接入参数见 `.env.integrations.example`。复制为 `.env.integrations` 后可叠加 `compose.integrations.yaml`；所有开关默认关闭，匿名适配器的保留域名无法用于真实交易。必须先按自己的上游协议完成开发和测试，不能直接填生产秘密试运行。可选域名配置在 `compose.domains.yaml`，仅使用自己新建的云资源。
 
 ## 原生开发

@@ -126,6 +126,10 @@ func LoadHTTP() (HTTP, error) {
 	}
 	h.Auth.AdminUsername = os.Getenv("ADMIN_USERNAME")
 	h.Auth.AdminEmail = os.Getenv("ADMIN_EMAIL")
+	h.Auth.AdminPasswordHash, e = optionalSecret("ADMIN_PASSWORD_HASH")
+	if e != nil {
+		return h, e
+	}
 	if os.Getenv("ADMIN_ACCESS_ISSUER") != "" || os.Getenv("ADMIN_ACCESS_AUDIENCE") != "" {
 		h.AdminAccess, e = access.New(os.Getenv("ADMIN_ACCESS_ISSUER"), os.Getenv("ADMIN_ACCESS_AUDIENCE"), h.Auth.AdminEmail)
 		if e != nil {

@@ -243,6 +243,10 @@ func register(r *gin.Engine, s *store.Store, opts Options) {
 			out := gin.H{"authenticated": e == nil, "mailReady": a.Ready()}
 			if role == "admin" {
 				out["configured"] = a.AdminConfigured()
+				out["loginMethod"] = "email"
+				if a.AdminPasswordLogin() {
+					out["loginMethod"] = "password"
+				}
 				if e == nil {
 					out["username"] = a.Username()
 				}

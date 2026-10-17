@@ -57,7 +57,8 @@ type Options struct {
 // RouteInventory exposes only method/path metadata for offline frontend contract checks.
 func RouteInventory() []map[string]string {
 	gin.SetMode(gin.ReleaseMode)
-	r := Router(&store.Store{}, "inventory", slog.New(slog.NewTextHandler(io.Discard, nil))).(*gin.Engine)
+	// Include optional inventory routes without configuring keys or accessing data.
+	r := Router(&store.Store{}, "inventory", slog.New(slog.NewTextHandler(io.Discard, nil)), Options{Origin: "http://127.0.0.1:8093", Vouchers: &vouchers.Service{}}).(*gin.Engine)
 	out := []map[string]string{}
 	for _, route := range r.Routes() {
 		out = append(out, map[string]string{"method": route.Method, "path": route.Path})
